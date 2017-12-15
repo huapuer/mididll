@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <gdiplus.h>
 #include <memory>
+#include <shlwapi.h>
+#pragma comment(lib,"shlwapi.lib")
 
 using namespace Gdiplus;
 using namespace std;
@@ -17,6 +19,12 @@ public:
 	double duration;
 	int    pitch;
 };
+
+std::wstring StringToWString(const std::string &str) {
+	std::wstring wstr(str.length(), L' ');
+	std::copy(str.begin(), str.end(), wstr.begin());
+	return wstr;
+}
 
 void convertToMelody(MidiFile& midifile, vector<Melody>& melody, int track) {
 	midifile.absoluteTicks();
@@ -146,7 +154,7 @@ void playMelody(vector<Melody>& melody, int tpq) {
 			continue;
 		}
 
-		cout << i << "\t" << (double)melody[i].tick / tpq
+		cout << i+1 << "\t" << (double)melody[i].tick / tpq
 			<< "\t" << melody[i].pitch
 			// << "\t" << (double)melody[i].duration/tpq
 			<< "\n";
@@ -158,7 +166,7 @@ void playMelody(vector<Melody>& melody, int tpq) {
 		closeNote(0x90 + (melody[i].pitch * 0x100) + (50 * 0x10000));
 
 		if (delta > melody[i].duration) {
-			cout <<i << "\t" << (melody[i + 1].tick - (delta - melody[i].duration)) / (double)tpq
+			cout <<i+1 << "\t" << (melody[i + 1].tick - (delta - melody[i].duration)) / (double)tpq
 				<< "\t" << 0
 				<< "\n";
 			Sleep(delta - melody[i].duration);
@@ -208,7 +216,7 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 	return -1;  // Failure
 }
 
-void BitmapToJpg(HBITMAP hbmpImage, int width, int height)
+void BitmapToJpg(HBITMAP hbmpImage, int width, int height, string des)
 {
 	Bitmap *p_bmp = Bitmap::FromHBITMAP(hbmpImage, NULL);
 	//Bitmap *p_bmp = new Bitmap(width, height, PixelFormat32bppARGB);
@@ -219,10 +227,141 @@ void BitmapToJpg(HBITMAP hbmpImage, int width, int height)
 		std::cout << "Encoder succeeded" << std::endl;
 	else
 		std::cout << "Encoder failed" << std::endl;
-	p_bmp->Save(L"test.jpg", &pngClsid, NULL);
+	p_bmp->Save(StringToWString(des).c_str(), &pngClsid, NULL);
 	delete p_bmp;
 }
 
+int melody2Img(vector<Melody>& melody, int notes, int tpq, string des) {
+	int w = (melody[notes - 1].tick - melody[0].tick + melody[notes - 1].duration) / tpq * 8;
+
+	int u = -1;
+	int l = 99999;
+	for (int i = 0; i<notes; i++) {
+		if (melody[i].pitch > u) {
+			u = melody[i].pitch;
+		}
+		if (melody[i].pitch < l) {
+			l = melody[i].pitch;
+		}
+	}
+
+	int h = (u - l + 1) * 8;
+
+	// Initialize GDI+.
+	GdiplusStartupInput gdiplusStartupInput;
+	ULONG_PTR gdiplusToken;
+	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
+	unsigned char* pixels = (unsigned char*)malloc(w*h * 3 * sizeof(char));
+	memset(pixels, 255, w*h * 3 * sizeof(char));
+	//ZeroMemory(pixels, w*h * 3 * sizeof(char));
+
+	for (int i = 0; i<notes; i++) {
+		int delta = melody[i + 1].tick - melody[i].tick;
+		if (delta == 0) {
+			continue;
+		}
+
+		int ax = (melody[i].tick - melody[0].tick) / tpq * 8;
+		int ay = (u - melody[i].pitch) * 8;
+
+		int bx = (melody[i].tick - melody[0].tick + melody[i].duration) / tpq * 8;
+		int by = ay + 8;
+
+		for (int i = ax; i < bx; i++) {
+			for (int j = ay; j < by; j++) {
+				int p = j * w + i;
+				pixels[p * 3] = 0;
+				pixels[p * 3 + 1] = 0;
+				pixels[p * 3 + 2] = 0;
+			}
+		}
+	}
+
+	// at this point we have some input
+
+	BITMAPINFOHEADER bmih;
+	bmih.biSize = sizeof(BITMAPINFOHEADER);
+	bmih.biWidth = w;
+	bmih.biHeight = -h;
+	bmih.biPlanes = 1;
+	bmih.biBitCount = 24;
+	bmih.biCompression = BI_RGB;
+	bmih.biSizeImage = 0;
+	bmih.biXPelsPerMeter = 10;
+	bmih.biYPelsPerMeter = 10;
+	bmih.biClrUsed = 0;
+	bmih.biClrImportant = 0;
+
+	BITMAPINFO dbmi;
+	ZeroMemory(&dbmi, sizeof(dbmi));
+	dbmi.bmiHeader = bmih;
+	dbmi.bmiColors->rgbBlue = 0;
+	dbmi.bmiColors->rgbGreen = 0;
+	dbmi.bmiColors->rgbRed = 0;
+	dbmi.bmiColors->rgbReserved = 0;
+
+	HDC hdc = ::GetDC(NULL);
+
+	HBITMAP hbmp = CreateDIBitmap(hdc, &bmih, CBM_INIT, pixels, &dbmi, DIB_RGB_COLORS);
+	if (hbmp == NULL) {
+		::MessageBox(NULL, L"Could not load the desired image image", L"Error", MB_OK);
+		return 0;
+	}
+
+	BitmapToJpg(hbmp, w, h, des);
+
+	::ReleaseDC(NULL, hdc);
+
+	/*
+	// a little test if everything is OK
+	OpenClipboard(NULL);
+	EmptyClipboard();
+	SetClipboardData(CF_BITMAP, hbmp);
+	CloseClipboard();
+	*/
+
+	// cleanup
+	DeleteObject(hbmp);
+}
+
+BOOL RecursiveDirectory(wstring wstrDir)
+{
+	if (wstrDir.length() <= 3)
+	{
+		return FALSE;
+	}
+	if (wstrDir[wstrDir.length() - 1] == '\\')
+	{
+		wstrDir.erase(wstrDir.end() - 1);
+	}
+
+	if (PathFileExists(wstrDir.c_str()))
+		return TRUE;
+
+	if (CreateDirectory(wstrDir.c_str(), NULL) == false)
+	{
+		wstring wstrNewDir = wstrDir;
+		while (wstrNewDir[wstrNewDir.length() - 1] != '\\')
+		{
+			wstrNewDir.erase(wstrNewDir.length() - 1);
+		}
+		// delete '\\'   
+		wstrNewDir.erase(wstrNewDir.length() - 1);
+
+		RecursiveDirectory(wstrNewDir);
+		CreateDirectory(wstrDir.c_str(), NULL);
+	}
+
+	if (!PathFileExists(wstrDir.c_str()))
+		return FALSE;
+	return TRUE;
+}
+
+string Path2Name(string path) {
+	int pos = path.find_last_of('\\');
+	return string(path.substr(pos + 1));
+}
 
 int main(int argc, char** argv) {
 	Options options;
@@ -263,61 +402,25 @@ int main(int argc, char** argv) {
 		playMelody(melody, tpq);
 	}
 	else if (op == "gen") {
-		// Initialize GDI+.
-		GdiplusStartupInput gdiplusStartupInput;
-		ULONG_PTR gdiplusToken;
-		GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+		int track = atoi(options.getArg(3).data());
+		int notes= atoi(options.getArg(4).data());
+		string des = options.getArg(5);
 
-		unsigned char pixels[160 * 120 * 3];
-		for (int i = 0; i < 160 * 120 * 3; i++) {
-			pixels[i] = (i % 4 == 1) * 255;        // An BGR (not RGB) 160x120 image.
+		string f= Path2Name(midifile.getFilename());
+
+		RecursiveDirectory(StringToWString(des+"\\f100"));
+
+		vector<Melody> melody;
+		convertToMelody(midifile, melody, track);
+		sortMelody(melody);
+		melody2Img(melody, notes, tpq, des+"\\f100\\"+f+".jpg");
+
+		for (int i = 95; i >= 50; i -= 5) {
+			char c[8];
+			_itoa_s(i, c, 10);
+			RecursiveDirectory(StringToWString(des + "\\f" + c));
+			melody2Img(melody, notes, tpq, des + "\\f" + c + "\\" + f + ".jpg");
 		}
-
-			// at this point we have some input
-
-			BITMAPINFOHEADER bmih;
-			bmih.biSize = sizeof(BITMAPINFOHEADER);
-			bmih.biWidth = 160;
-			bmih.biHeight = -120;
-			bmih.biPlanes = 1;
-			bmih.biBitCount = 24;
-			bmih.biCompression = BI_RGB;
-			bmih.biSizeImage = 0;
-			bmih.biXPelsPerMeter = 10;
-			bmih.biYPelsPerMeter = 10;
-			bmih.biClrUsed = 0;
-			bmih.biClrImportant = 0;
-
-			BITMAPINFO dbmi;
-			ZeroMemory(&dbmi, sizeof(dbmi));
-			dbmi.bmiHeader = bmih;
-			dbmi.bmiColors->rgbBlue = 0;
-			dbmi.bmiColors->rgbGreen = 0;
-			dbmi.bmiColors->rgbRed = 0;
-			dbmi.bmiColors->rgbReserved = 0;
-
-			HDC hdc = ::GetDC(NULL);
-
-			HBITMAP hbmp = CreateDIBitmap(hdc, &bmih, CBM_INIT, pixels, &dbmi, DIB_RGB_COLORS);
-			if (hbmp == NULL) {
-				::MessageBox(NULL, "Could not load the desired image image", "Error", MB_OK);
-				return 0;
-			}
-
-			BitmapToJpg(hbmp, 160, 120);
-
-			::ReleaseDC(NULL, hdc);
-
-			/*
-			// a little test if everything is OK
-			OpenClipboard(NULL);
-			EmptyClipboard();
-			SetClipboardData(CF_BITMAP, hbmp);
-			CloseClipboard();
-			*/
-
-			// cleanup
-			DeleteObject(hbmp);
 	}
 
 	return 0;
