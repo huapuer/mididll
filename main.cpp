@@ -9,6 +9,8 @@
 #include <memory>
 #include <shlwapi.h>
 #pragma comment(lib,"shlwapi.lib")
+#include <ctime>
+#include<algorithm>
 
 using namespace Gdiplus;
 using namespace std;
@@ -18,6 +20,14 @@ public:
 	double tick;
 	double duration;
 	int    pitch;
+};
+
+class Statistics {
+public:
+	int u;
+	int l;
+	vector<int> intervals;
+	vector<int> duarations;
 };
 
 std::wstring StringToWString(const std::string &str) {
@@ -231,18 +241,70 @@ void BitmapToJpg(HBITMAP hbmpImage, int width, int height, string des)
 	delete p_bmp;
 }
 
-int melody2Img(vector<Melody>& melody, int notes, int tpq, string des) {
-	int w = (melody[notes - 1].tick - melody[0].tick + melody[notes - 1].duration) / tpq * 8;
+void SaveBitmapToFile(BYTE* pBitmapBits, LONG lWidth, LONG lHeight, WORD wBitsPerPixel, LPCTSTR lpszFileName)
+{
+	BITMAPINFOHEADER bmpInfoHeader = { 0 };
+	BITMAPFILEHEADER bfh = { 0 };
+	HANDLE hFile = NULL;
+	DWORD dwWritten = 0;
 
-	int u = -1;
-	int l = 99999;
-	for (int i = 0; i<notes; i++) {
-		if (melody[i].pitch > u) {
-			u = melody[i].pitch;
-		}
-		if (melody[i].pitch < l) {
-			l = melody[i].pitch;
-		}
+
+	// Set the size
+	bmpInfoHeader.biSize = sizeof(BITMAPINFOHEADER);
+	// Bit count
+	bmpInfoHeader.biBitCount = wBitsPerPixel;
+	// Use all colors
+	bmpInfoHeader.biClrImportant = 0;
+	// Use as many colors according to bits per pixel
+	bmpInfoHeader.biClrUsed = 0;
+	// Store as un Compressed
+	bmpInfoHeader.biCompression = BI_RGB;
+	// Set the height in pixels
+	bmpInfoHeader.biHeight = -lHeight;
+	// Width of the Image in pixels
+	bmpInfoHeader.biWidth = lWidth;
+	// Default number of planes
+	bmpInfoHeader.biPlanes = 1;
+	// Calculate the image size in bytes
+	bmpInfoHeader.biSizeImage = lWidth* lHeight * (wBitsPerPixel / 8);
+
+	// This value should be values of BM letters i.e 0¡Á4D42
+	// 0x4D = M 0x42 = B storing in reverse order to match with endian
+	bfh.bfType = 0x4D42;
+	/* or
+	bfh.bfType = ¡®B¡¯+(¡¯M¡¯ << 8);
+	// <<8 used to shift ¡®M¡¯ to end
+	*/
+	// Offset to the RGBQUAD
+	bfh.bfOffBits = sizeof(BITMAPINFOHEADER) + sizeof(BITMAPFILEHEADER);
+	// Total size of image including size of headers
+	bfh.bfSize = bfh.bfOffBits + bmpInfoHeader.biSizeImage;
+	// Create the file in disk to write
+	hFile = CreateFile(lpszFileName, GENERIC_WRITE, 0, NULL,
+		CREATE_ALWAYS /*OPEN_ALWAYS*/, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (!hFile) // return if error opening file
+	{
+		return;
+	}
+
+	// Write the File header
+	WriteFile(hFile, &bfh, sizeof(bfh), &dwWritten, NULL);
+	// Write the bitmap info header
+	WriteFile(hFile, &bmpInfoHeader, sizeof(bmpInfoHeader), &dwWritten, NULL);
+	// Write the RGB Data
+	WriteFile(hFile, pBitmapBits, bmpInfoHeader.biSizeImage, &dwWritten, NULL);
+	// Close the file handle
+	CloseHandle(hFile);
+}
+
+void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string des) {
+	float w = (melody[notes - 1].tick - melody[0].tick + melody[notes - 1].duration) / float(tpq) * 8.0f;
+
+	int scale = 1;
+	while ((int(w) * 3) % 4 != 0) {
+		w *= 2;
+		scale *= 2;
 	}
 
 	int h = (u - l + 1) * 8;
@@ -252,20 +314,22 @@ int melody2Img(vector<Melody>& melody, int notes, int tpq, string des) {
 	ULONG_PTR gdiplusToken;
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
-	unsigned char* pixels = (unsigned char*)malloc(w*h * 3 * sizeof(char));
-	memset(pixels, 255, w*h * 3 * sizeof(char));
+	unsigned char* pixels = (unsigned char*)malloc(w * h * 3 * sizeof(char));
+	memset(pixels, 255, w * h * 3 * sizeof(char));
 	//ZeroMemory(pixels, w*h * 3 * sizeof(char));
 
 	for (int i = 0; i<notes; i++) {
+		/*
 		int delta = melody[i + 1].tick - melody[i].tick;
 		if (delta == 0) {
 			continue;
 		}
+		*/
 
-		int ax = (melody[i].tick - melody[0].tick) / tpq * 8;
+		float ax = (melody[i].tick - melody[0].tick) / float(tpq) * 8.0f * scale;
 		int ay = (u - melody[i].pitch) * 8;
 
-		int bx = (melody[i].tick - melody[0].tick + melody[i].duration) / tpq * 8;
+		float bx = (melody[i].tick - melody[0].tick + melody[i].duration) / float(tpq) * 8.0f * scale;
 		int by = ay + 8;
 
 		for (int i = ax; i < bx; i++) {
@@ -278,6 +342,7 @@ int melody2Img(vector<Melody>& melody, int notes, int tpq, string des) {
 		}
 	}
 
+	/*
 	// at this point we have some input
 
 	BITMAPINFOHEADER bmih;
@@ -312,17 +377,13 @@ int melody2Img(vector<Melody>& melody, int notes, int tpq, string des) {
 	BitmapToJpg(hbmp, w, h, des);
 
 	::ReleaseDC(NULL, hdc);
-
-	/*
-	// a little test if everything is OK
-	OpenClipboard(NULL);
-	EmptyClipboard();
-	SetClipboardData(CF_BITMAP, hbmp);
-	CloseClipboard();
-	*/
-
+	
 	// cleanup
 	DeleteObject(hbmp);
+
+	*/
+
+	SaveBitmapToFile(pixels, w, h, 24, StringToWString(des).data());
 }
 
 BOOL RecursiveDirectory(wstring wstrDir)
@@ -361,6 +422,95 @@ BOOL RecursiveDirectory(wstring wstrDir)
 string Path2Name(string path) {
 	int pos = path.find_last_of('\\');
 	return string(path.substr(pos + 1));
+}
+
+int mutateMelody(vector<Melody>& mutation, int idx, int u, int l, vector<int>& intervals) {
+	int op;
+	if (idx > 0) {
+		op = rand() % 3;
+	}
+	else {
+		op = 0;
+	}
+	switch (op) {
+	case 0:
+		int r;
+		do {
+			r = l + rand() % (u - l + 1);
+		} while (r == mutation[idx].pitch);
+		mutation[idx].pitch = r;
+		break;
+	case 1: {
+		int prei = mutation[idx].tick - mutation[idx - 1].tick;
+		int i = 0;
+		for (; i < intervals.size(); i++) {
+			if (prei == intervals[i]) {
+				break;
+			}
+		}
+		if (i > 0) {
+			int ii = intervals[rand() % i];
+			if (mutation[idx - 1].duration > ii) {
+				mutation[idx - 1].duration = ii;
+			}
+			int d = prei - ii;
+			for (int i = idx; i < mutation.size(); i++) {
+				mutation[i].tick -= d;
+			}
+			break;
+		}
+	}
+	case 2: {
+		op = 2;
+		int d = intervals[rand() % intervals.size()];
+		for (int i = idx; i < mutation.size(); i++) {
+			mutation[i].tick += d;
+		}
+		break;
+	}
+	}
+	return op;
+}
+
+void statistics(vector<Melody>& melody, int notes, Statistics& s) {
+	s.u = -1;
+	s.l = 99999;
+	for (int i = 0; i<notes; i++) {
+		if (melody[i].pitch > s.u) {
+			s.u = melody[i].pitch;
+		}
+		if (melody[i].pitch < s.l) {
+			s.l = melody[i].pitch;
+		}
+	}
+
+	for (int i = 0; i + 1 < notes; i++) {
+		int interval = melody[i + 1].tick - melody[i].tick;
+		int j = 0;
+		for (; j < s.intervals.size(); j++) {
+			if (s.intervals[j] == interval) {
+				break;
+			}
+		}
+		if (j == s.intervals.size()) {
+			s.intervals.push_back(interval);
+		}
+	}
+	sort(s.intervals.begin(), s.intervals.end());
+
+	for (int i = 0; i < notes; i++) {
+		int duaration = melody[i].duration;
+		int j = 0;
+		for (; j < s.duarations.size(); j++) {
+			if (s.duarations[j] == duaration) {
+				break;
+			}
+		}
+		if (j == s.duarations.size()) {
+			s.duarations.push_back(duaration);
+		}
+	}
+	sort(s.duarations.begin(), s.duarations.end());
 }
 
 int main(int argc, char** argv) {
@@ -413,13 +563,57 @@ int main(int argc, char** argv) {
 		vector<Melody> melody;
 		convertToMelody(midifile, melody, track);
 		sortMelody(melody);
-		melody2Img(melody, notes, tpq, des+"\\f100\\"+f+".jpg");
 
-		for (int i = 95; i >= 50; i -= 5) {
+		Statistics s;
+		statistics(melody, notes, s);
+
+		melody2Img(melody, notes, tpq, s.u, s.l, des+"\\f100\\"+f+".bmp");
+
+		vector<Melody> mutation;
+		srand((unsigned)time(0));
+
+		RecursiveDirectory(StringToWString(des + "\\f0"));
+
+		Melody m= Melody();
+		for (int i = 0; i < notes / 5; i++) {
+			mutation.clear();
+			for (int j = 0; j < notes; j++) {
+				m.pitch = s.l + rand() % (s.u - s.l + 1);
+				m.tick += s.intervals[rand() % s.intervals.size()];
+				m.duration = s.duarations[rand() % s.duarations.size()];
+				if (j > 0) {
+					int d = m.tick - mutation[j - 1].tick;
+					if (d < mutation[j - 1].duration) {
+						mutation[j - 1].duration = d;
+					}
+				}
+				mutation.push_back(m);
+			}
+			char fc[8];
+			_itoa_s(i, fc, 10);
+			melody2Img(mutation, notes, tpq, s.u, s.l, des + "\\f0\\" + f + fc + ".bmp");
+		}
+
+		for (int i = 20; i <= 95; i += 5) {
 			char c[8];
 			_itoa_s(i, c, 10);
 			RecursiveDirectory(StringToWString(des + "\\f" + c));
-			melody2Img(melody, notes, tpq, des + "\\f" + c + "\\" + f + ".jpg");
+
+			int m = float(100 - i) / 100.0*float(notes);
+			if (m > 0) {
+				for (int idx = 0; idx + m < notes; idx++) {
+					mutation.clear();
+					for (int j = 0; j < notes; j++) {
+						mutation.push_back(melody[j]);
+					}
+					for (int k = idx; k < idx + m; k++) {
+						mutateMelody(mutation, k, s.u, s.l, s.intervals);
+					}
+					char fc[8];
+					_itoa_s(idx, fc, 10);
+					melody2Img(mutation, notes, tpq, s.u, s.l, des + "\\f" + c + "\\" + f + fc + ".bmp");
+				}
+			}
 		}
 	}
 
