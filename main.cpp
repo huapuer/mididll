@@ -299,15 +299,14 @@ void SaveBitmapToFile(BYTE* pBitmapBits, LONG lWidth, LONG lHeight, WORD wBitsPe
 }
 
 void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string des) {
-	float w = (melody[notes - 1].tick - melody[0].tick + melody[notes - 1].duration) / float(tpq) * 8.0f;
+	float h = (melody[notes - 1].tick - melody[0].tick + melody[notes - 1].duration) / float(tpq) * 8.0f;
 
+	int w = (u - l + 1) * 8;
 	int scale = 1;
 	while ((int(w) * 3) % 4 != 0) {
 		w *= 2;
 		scale *= 2;
 	}
-
-	int h = (u - l + 1) * 8;
 
 	// Initialize GDI+.
 	GdiplusStartupInput gdiplusStartupInput;
@@ -315,7 +314,7 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
 	unsigned char* pixels = (unsigned char*)malloc(w * h * 3 * sizeof(char));
-	memset(pixels, 255, w * h * 3 * sizeof(char));
+	memset(pixels, 0, w * h * 3 * sizeof(char));
 	//ZeroMemory(pixels, w*h * 3 * sizeof(char));
 
 	for (int i = 0; i<notes; i++) {
@@ -326,18 +325,18 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 		}
 		*/
 
-		float ax = (melody[i].tick - melody[0].tick) / float(tpq) * 8.0f * scale;
-		int ay = (u - melody[i].pitch) * 8;
+		float ay = (melody[i].tick - melody[0].tick) / float(tpq) * 8.0f;
+		int ax = (u - melody[i].pitch) * 8 * scale;
 
-		float bx = (melody[i].tick - melody[0].tick + melody[i].duration) / float(tpq) * 8.0f * scale;
-		int by = ay + 8;
+		float by = (melody[i].tick - melody[0].tick + melody[i].duration) / float(tpq) * 8.0f;
+		int bx = ax + 8 * scale;
 
 		for (int i = ax; i < bx; i++) {
 			for (int j = ay; j < by; j++) {
 				int p = j * w + i;
-				pixels[p * 3] = 0;
-				pixels[p * 3 + 1] = 0;
-				pixels[p * 3 + 2] = 0;
+				pixels[p * 3] = 255;
+				pixels[p * 3 + 1] = 255;
+				pixels[p * 3 + 2] = 255;
 			}
 		}
 	}
