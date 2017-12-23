@@ -26,8 +26,8 @@ class Statistics {
 public:
 	int u;
 	int l;
-	vector<int> intervals;
-	vector<int> duarations;
+	vector<float> intervals;
+	vector<float> duarations;
 };
 
 std::wstring StringToWString(const std::string &str) {
@@ -385,6 +385,43 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 	SaveBitmapToFile(pixels, w, h, 24, StringToWString(des).data());
 }
 
+void mld2Melody(string uri, vector<Melody>& melody, Statistics& s) {
+	char buffer[256];
+	ifstream in(uri);
+	if (!in.is_open())
+	{
+		cout << "Error opening file"<<endl; exit(1);
+	}
+	float tick = 0.0;
+	s.u = -1;
+	s.l = 9999;
+	while (!in.eof())
+	{
+		in.getline(buffer, 100);
+		if (strlen(buffer) == 0) {
+			break;
+		}
+		float pitch = 0.0, occupy = 0.0, duration = 0.0;
+		Melody m = Melody();
+		int n = sscanf(buffer, "%f\t%f\t%f", &pitch, &occupy, &duration);
+		if (n != 3) {
+			cout << "Illagle format"<<endl; exit(1);
+		}
+		m.pitch = pitch;
+		m.duration = duration;
+		m.tick = tick;
+		tick += occupy;
+		melody.push_back(m);
+
+		if (pitch > s.u) {
+			s.u = pitch;
+		}
+		if (pitch < s.l) {
+			s.l = pitch;
+		}
+	}
+}
+
 BOOL RecursiveDirectory(wstring wstrDir)
 {
 	if (wstrDir.length() <= 3)
@@ -423,7 +460,7 @@ string Path2Name(string path) {
 	return string(path.substr(pos + 1));
 }
 
-int mutateMelody(vector<Melody>& mutation, int idx, int u, int l, vector<int>& intervals) {
+int mutateMelody(vector<Melody>& mutation, int idx, int u, int l, vector<float>& intervals) {
 	int op;
 	if (idx > 0) {
 		op = rand() % 3;
@@ -517,13 +554,13 @@ int main(int argc, char** argv) {
 	options.process(argc, argv);
 	MidiFile midifile;
 
-	midifile.read(options.getArg(1));
-
 	string op = options.getArg(2);
-	int tracks = midifile.getTrackCount();
-	int tpq = midifile.getTicksPerQuarterNote();
 
 	if(op=="print"){
+		midifile.read(options.getArg(1));
+		int tracks = midifile.getTrackCount();
+		int tpq = midifile.getTicksPerQuarterNote();
+
 		if (options.getArgCount() < 3) {
 			cout << "TPQ: " << tpq << endl;
 			cout << "TRACKS: " << tracks << endl;
@@ -544,6 +581,10 @@ int main(int argc, char** argv) {
 		}
 	}
 	else if (op == "play") {
+		midifile.read(options.getArg(1));
+		int tracks = midifile.getTrackCount();
+		int tpq = midifile.getTicksPerQuarterNote();
+
 		int track = atoi(options.getArg(3).data());
 		vector<Melody> melody;
 		convertToMelody(midifile, melody,track);
@@ -551,6 +592,10 @@ int main(int argc, char** argv) {
 		playMelody(melody, tpq);
 	}
 	else if (op == "gen") {
+		midifile.read(options.getArg(1));
+		int tracks = midifile.getTrackCount();
+		int tpq = midifile.getTicksPerQuarterNote();
+
 		int track = atoi(options.getArg(3).data());
 		int notes= atoi(options.getArg(4).data());
 		string des = options.getArg(5);
@@ -614,6 +659,14 @@ int main(int argc, char** argv) {
 				}
 			}
 		}
+	}
+	else if (op == "mld2img") {
+		vector<Melody> melody;
+		Statistics s;
+		string uri = options.getArg(1);
+		mld2Melody(uri, melody, s);
+		
+		melody2Img(melody, melody.size(), 1, s.u, s.l, uri + ".bmp");
 	}
 
 	return 0;
