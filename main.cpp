@@ -19,7 +19,12 @@ class Melody {
 public:
 	double tick;
 	double duration;
+	double occupy;
 	int    pitch;
+
+	bool equals(Melody* c) {
+		return this->occupy == c->occupy && this->pitch == c->pitch && this->duration == c->duration;
+	}
 };
 
 class Statistics {
@@ -36,7 +41,7 @@ std::wstring StringToWString(const std::string &str) {
 	return wstr;
 }
 
-void convertToMelody(MidiFile& midifile, vector<Melody>& melody, int track) {
+void midi2Melody(MidiFile& midifile, vector<Melody>& melody, int track) {
 	midifile.absoluteTicks();
 	if (track < 0 || track >= midifile.getNumTracks()) {
 		cout << "Invalid track: " << track << " Maximum track is: "
@@ -82,6 +87,7 @@ void convertToMelody(MidiFile& midifile, vector<Melody>& melody, int track) {
 			}
 			mtemp.tick = state[pitch];
 			mtemp.duration = midifile[track][i].tick - state[pitch];
+			mtemp.occupy = mtemp.duration;
 			mtemp.pitch = pitch;
 			melody.push_back(mtemp);
 			state[pitch] = -1;
@@ -317,7 +323,7 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 	memset(pixels, 0, w * h * 3 * sizeof(char));
 	//ZeroMemory(pixels, w*h * 3 * sizeof(char));
 
-	for (int i = 0; i<notes; i++) {
+	for (int i = 0; i < melody.size() && i < notes; i++) {
 		/*
 		int delta = melody[i + 1].tick - melody[i].tick;
 		if (delta == 0) {
@@ -587,7 +593,7 @@ int main(int argc, char** argv) {
 
 		int track = atoi(options.getArg(3).data());
 		vector<Melody> melody;
-		convertToMelody(midifile, melody,track);
+		midi2Melody(midifile, melody,track);
 		sortMelody(melody);
 		playMelody(melody, tpq);
 	}
@@ -605,7 +611,7 @@ int main(int argc, char** argv) {
 		RecursiveDirectory(StringToWString(des+"\\f100"));
 
 		vector<Melody> melody;
-		convertToMelody(midifile, melody, track);
+		midi2Melody(midifile, melody, track);
 		sortMelody(melody);
 
 		Statistics s;
@@ -619,9 +625,9 @@ int main(int argc, char** argv) {
 		RecursiveDirectory(StringToWString(des + "\\f0"));
 
 		Melody m= Melody();
-		for (int i = 0; i < notes / 5; i++) {
+		for (int i = 0; i < melody.size() / 5 && i < notes / 5; i++) {
 			mutation.clear();
-			for (int j = 0; j < notes; j++) {
+			for (int j = 0; j < melody.size() && j < notes; j++) {
 				m.pitch = s.l + rand() % (s.u - s.l + 1);
 				m.tick += s.intervals[rand() % s.intervals.size()];
 				m.duration = s.duarations[rand() % s.duarations.size()];
@@ -645,7 +651,7 @@ int main(int argc, char** argv) {
 
 			int m = float(100 - i) / 100.0*float(notes);
 			if (m > 0) {
-				for (int idx = 0; idx + m < notes; idx++) {
+				for (int idx = 0; idx + m < melody.size() && idx + m < notes; idx++) {
 					mutation.clear();
 					for (int j = 0; j < notes; j++) {
 						mutation.push_back(melody[j]);
@@ -667,6 +673,41 @@ int main(int argc, char** argv) {
 		mld2Melody(uri, melody, s);
 		
 		melody2Img(melody, melody.size(), 1, s.u, s.l, uri + ".bmp");
+	}
+	else if (op == "collect") {
+		midifile.read(options.getArg(1));
+		int tracks = midifile.getTrackCount();
+		double tpq = midifile.getTicksPerQuarterNote();
+
+		int track = atoi(options.getArg(3).data());
+		int notes = atoi(options.getArg(4).data());
+		string des = options.getArg(5);
+
+		vector<Melody> melody;
+		midi2Melody(midifile, melody, track);
+		sortMelody(melody);
+
+		for (int i = 1; i < melody.size(); i++) {
+			melody[i-1].occupy = melody[i].tick - melody[i - 1].tick;
+		}
+
+		ofstream fout(des, ios::app);
+
+		string f = Path2Name(midifile.getFilename());
+		fout << "#" << f << endl;
+		for (int i = 0; i < melody.size() && i < notes; i++) {
+			int j = 0;
+			for (; j < i; j++) {
+				if (melody[i].equals(&melody[j])) {
+					break;
+				}
+			}
+			if (j == i) {
+				fout << melody[i].occupy / tpq << "\t" << melody[i].pitch << "\t" << melody[i].duration / tpq << endl;
+			}
+		}
+
+		fout.close();
 	}
 
 	return 0;
