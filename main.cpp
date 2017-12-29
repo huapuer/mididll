@@ -177,7 +177,7 @@ void playMelody(vector<Melody>& melody, int tpq) {
 
 		openNote(0x90 + (melody[i].pitch * 0x100) + (50 * 0x10000));
 
-		Sleep(melody[i].duration);
+		Sleep(melody[i].duration * 480.0 / float(tpq));
 
 		closeNote(0x90 + (melody[i].pitch * 0x100) + (50 * 0x10000));
 
@@ -185,7 +185,7 @@ void playMelody(vector<Melody>& melody, int tpq) {
 			cout <<i+1 << "\t" << (melody[i + 1].tick - (delta - melody[i].duration)) / (double)tpq
 				<< "\t" << 0
 				<< "\n";
-			Sleep(delta - melody[i].duration);
+			Sleep((delta - melody[i].duration) * 480.0 / float(tpq));
 		}
 		
 	}
@@ -590,6 +590,9 @@ int main(int argc, char** argv) {
 		midifile.read(options.getArg(1));
 		int tracks = midifile.getTrackCount();
 		int tpq = midifile.getTicksPerQuarterNote();
+		if (argc >= 5) {
+			tpq = atoi(options.getArg(4).data());
+		}
 
 		int track = atoi(options.getArg(3).data());
 		vector<Melody> melody;
