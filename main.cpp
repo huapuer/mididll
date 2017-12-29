@@ -597,6 +597,23 @@ int main(int argc, char** argv) {
 		sortMelody(melody);
 		playMelody(melody, tpq);
 	}
+	else if (op == "playmld") {
+		vector<Melody> melody;
+		Statistics s;
+		string uri = options.getArg(1);
+		int tpq = atoi(options.getArg(3).data());
+
+		mld2Melody(uri, melody, s);
+
+		sortMelody(melody);
+
+		for (int i = 0; i < melody.size(); i++) {
+			melody[i].tick *= tpq;
+			melody[i].duration *= tpq;
+		}
+
+		playMelody(melody, 1);
+	}
 	else if (op == "gen") {
 		midifile.read(options.getArg(1));
 		int tracks = midifile.getTrackCount();
