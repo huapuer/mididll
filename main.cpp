@@ -41,60 +41,6 @@ std::wstring StringToWString(const std::string &str) {
 	return wstr;
 }
 
-void midi2Melody(MidiFile& midifile, vector<Melody>& melody, int track) {
-	midifile.absoluteTicks();
-	if (track < 0 || track >= midifile.getNumTracks()) {
-		cout << "Invalid track: " << track << " Maximum track is: "
-			<< midifile.getNumTracks() - 1 << endl;
-	}
-	int numEvents = midifile.getNumEvents(track);
-
-	vector<int> state(128);   // for keeping track of the note states
-
-	int i;
-	for (i = 0; i<128; i++) {
-		state[i] = -1;
-	}
-
-	melody.reserve(numEvents);
-	melody.clear();
-
-	Melody mtemp;
-	int command;
-	int pitch;
-	int velocity;
-
-	for (i = 0; i<numEvents; i++) {
-		command = midifile[track][i][0] & 0xf0;
-		if (command == 0x90) {
-			pitch = midifile[track][i][1];
-			velocity = midifile[track][i][2];
-			if (velocity == 0) {
-				// note off
-				goto noteoff;
-			}
-			else {
-				// note on
-				state[pitch] = midifile[track][i].tick;
-			}
-		}
-		else if (command == 0x80) {
-			// note off
-			pitch = midifile[track][i][1];
-		noteoff:
-			if (state[pitch] == -1) {
-				continue;
-			}
-			mtemp.tick = state[pitch];
-			mtemp.duration = midifile[track][i].tick - state[pitch];
-			mtemp.occupy = mtemp.duration;
-			mtemp.pitch = pitch;
-			melody.push_back(mtemp);
-			state[pitch] = -1;
-		}
-	}
-}
-
 int notecompare(const void* a, const void* b) {
 	Melody& aa = *((Melody*)a);
 	Melody& bb = *((Melody*)b);
@@ -121,6 +67,80 @@ int notecompare(const void* a, const void* b) {
 
 void sortMelody(vector<Melody>& melody) {
 	qsort(melody.data(), melody.size(), sizeof(Melody), notecompare);
+}
+
+void midi2Melody(MidiFile& midifile, vector<Melody>& melody, int track) {
+	midifile.absoluteTicks();
+	if (track < 0 || track >= midifile.getNumTracks()) {
+		cout << "Invalid track: " << track << " Maximum track is: "
+			<< midifile.getNumTracks() - 1 << endl;
+	}
+	int numEvents = midifile.getNumEvents(track);
+
+	vector<int> state(128);   // for keeping track of the note states
+
+	int i;
+	for (i = 0; i<128; i++) {
+		state[i] = -1;
+	}
+
+	melody.reserve(numEvents);
+	melody.clear();
+
+	Melody mtemp;
+	int command;
+	int pitch;
+	int velocity;
+
+	vector<Melody> tmp;
+	for (i = 0; i<numEvents; i++) {
+		command = midifile[track][i][0] & 0xf0;
+		if (command == 0x90) {
+			pitch = midifile[track][i][1];
+			velocity = midifile[track][i][2];
+			if (velocity == 0) {
+				// note off
+				goto noteoff;
+			}
+			else {
+				// note on
+				state[pitch] = midifile[track][i].tick;
+			}
+		}
+		else if (command == 0x80) {
+			// note off
+			pitch = midifile[track][i][1];
+		noteoff:
+			if (state[pitch] == -1) {
+				continue;
+			}
+			mtemp.tick = state[pitch];
+			mtemp.duration = midifile[track][i].tick - state[pitch];
+			mtemp.occupy = mtemp.duration;
+			mtemp.pitch = pitch;
+			tmp.push_back(mtemp);
+			state[pitch] = -1;
+		}
+	}
+
+	sortMelody(tmp);
+
+	Melody temp;
+	temp.tick = tmp[tmp.size() - 1].tick +
+		tmp[tmp.size() - 1].duration;
+	temp.pitch = 0;
+	temp.duration = 0;
+	tmp.push_back(temp);
+
+	for (i = 0; i<(int)tmp.size() - 1; i++) {
+		double delta = tmp[i + 1].tick - tmp[i].tick;
+		if (delta == 0) {
+			continue;
+		}
+
+		melody.push_back(tmp[i]);
+	}
+	melody.push_back(temp);
 }
 
 HMIDIOUT handle;
@@ -155,20 +175,24 @@ void playMelody(vector<Melody>& melody, int tpq) {
 		return;
 	}
 
+	/*
 	Melody temp;
 	temp.tick = melody[melody.size() - 1].tick +
 		melody[melody.size() - 1].duration;
 	temp.pitch = 0;
 	temp.duration = 0;
 	melody.push_back(temp);
+	*/
 
 	openMIDI();
 
 	for (i = 0; i<(int)melody.size() - 1; i++) {
 		delta = melody[i + 1].tick - melody[i].tick;
+		/*
 		if (delta == 0) {
 			continue;
 		}
+		*/
 
 		cout << i+1 << "\t" << (double)melody[i].tick / tpq
 			<< "\t" << melody[i].pitch
@@ -323,14 +347,14 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 	memset(pixels, 0, w * h * 3 * sizeof(char));
 	//ZeroMemory(pixels, w*h * 3 * sizeof(char));
 
-	for (int i = 0; i < melody.size() && i < notes; i++) {
+	for (int i = 0; i < melody.size()-1 && i < notes; i++) {
 		/*
 		int delta = melody[i + 1].tick - melody[i].tick;
 		if (delta == 0) {
 			continue;
 		}
 		*/
-
+		
 		float ay = (melody[i].tick - melody[0].tick) / float(tpq) * 8.0f;
 		int ax = (u - melody[i].pitch) * 8 * scale;
 
@@ -389,6 +413,7 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 	*/
 
 	SaveBitmapToFile(pixels, w, h, 24, StringToWString(des).data());
+	free(pixels);
 }
 
 void mld2Melody(string uri, vector<Melody>& melody, Statistics& s) {
@@ -632,7 +657,7 @@ int main(int argc, char** argv) {
 
 		vector<Melody> melody;
 		midi2Melody(midifile, melody, track);
-		sortMelody(melody);
+		//sortMelody(melody);
 
 		Statistics s;
 		statistics(melody, notes, s);
