@@ -264,11 +264,11 @@ void BitmapToJpg(HBITMAP hbmpImage, int width, int height, string des)
 	CLSID pngClsid;
 	int result = GetEncoderClsid(L"image/jpeg", &pngClsid);
 	if (result != -1)
-		std::cout << "Encoder succeeded" << std::endl;
+std::cout << "Encoder succeeded" << std::endl;
 	else
 		std::cout << "Encoder failed" << std::endl;
-	p_bmp->Save(StringToWString(des).c_str(), &pngClsid, NULL);
-	delete p_bmp;
+		p_bmp->Save(StringToWString(des).c_str(), &pngClsid, NULL);
+		delete p_bmp;
 }
 
 void SaveBitmapToFile(BYTE* pBitmapBits, LONG lWidth, LONG lHeight, WORD wBitsPerPixel, LPCTSTR lpszFileName)
@@ -339,22 +339,23 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 	}
 
 	// Initialize GDI+.
-	GdiplusStartupInput gdiplusStartupInput;
-	ULONG_PTR gdiplusToken;
-	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+	//GdiplusStartupInput gdiplusStartupInput;
+	//ULONG_PTR gdiplusToken;
+	//GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
-	unsigned char* pixels = (unsigned char*)malloc(w * h * 3 * sizeof(char));
+	int size = w * h * 3 * sizeof(char);
+	unsigned char* pixels = (unsigned char*)malloc(size);
 	memset(pixels, 0, w * h * 3 * sizeof(char));
 	//ZeroMemory(pixels, w*h * 3 * sizeof(char));
 
-	for (int i = 0; i < melody.size()-1 && i < notes; i++) {
+	for (int i = 0; i < notes; i++) {
 		/*
 		int delta = melody[i + 1].tick - melody[i].tick;
 		if (delta == 0) {
 			continue;
 		}
 		*/
-		
+
 		float ay = (melody[i].tick - melody[0].tick) / float(tpq) * 8.0f;
 		int ax = (u - melody[i].pitch) * 8 * scale;
 
@@ -364,6 +365,9 @@ void melody2Img(vector<Melody>& melody, int notes, int tpq, int u, int l, string
 		for (int i = ax; i < bx; i++) {
 			for (int j = ay; j < by; j++) {
 				int p = j * w + i;
+				if (p * 3 + 2 >= size){
+					break;
+				}
 				pixels[p * 3] = 255;
 				pixels[p * 3 + 1] = 255;
 				pixels[p * 3 + 2] = 255;
@@ -622,7 +626,7 @@ int main(int argc, char** argv) {
 		int track = atoi(options.getArg(3).data());
 		vector<Melody> melody;
 		midi2Melody(midifile, melody,track);
-		sortMelody(melody);
+		//sortMelody(melody);
 		playMelody(melody, tpq);
 	}
 	else if (op == "playmld") {
@@ -659,6 +663,10 @@ int main(int argc, char** argv) {
 		midi2Melody(midifile, melody, track);
 		//sortMelody(melody);
 
+		if (notes > melody.size() - 1) {
+			cout << "Notes out of range." << endl; exit(1);
+		}
+
 		Statistics s;
 		statistics(melody, notes, s);
 
@@ -670,9 +678,9 @@ int main(int argc, char** argv) {
 		RecursiveDirectory(StringToWString(des + "\\f0"));
 
 		Melody m= Melody();
-		for (int i = 0; i < melody.size() / 5 && i < notes / 5; i++) {
+		for (int i = 0; i < notes / 5; i++) {
 			mutation.clear();
-			for (int j = 0; j < melody.size() && j < notes; j++) {
+			for (int j = 0; j < notes; j++) {
 				m.pitch = s.l + rand() % (s.u - s.l + 1);
 				m.tick += s.intervals[rand() % s.intervals.size()];
 				m.duration = s.duarations[rand() % s.duarations.size()];
@@ -696,7 +704,7 @@ int main(int argc, char** argv) {
 
 			int m = float(100 - i) / 100.0*float(notes);
 			if (m > 0) {
-				for (int idx = 0; idx + m < melody.size() && idx + m < notes; idx++) {
+				for (int idx = 0; idx + m <= notes; idx++) {
 					mutation.clear();
 					for (int j = 0; j < notes; j++) {
 						mutation.push_back(melody[j]);
@@ -706,6 +714,7 @@ int main(int argc, char** argv) {
 					}
 					char fc[8];
 					_itoa_s(idx, fc, 10);
+
 					melody2Img(mutation, notes, tpq, s.u, s.l, des + "\\f" + c + "\\" + f + fc + ".bmp");
 				}
 			}
@@ -730,7 +739,11 @@ int main(int argc, char** argv) {
 
 		vector<Melody> melody;
 		midi2Melody(midifile, melody, track);
-		sortMelody(melody);
+		//sortMelody(melody);
+
+		if (notes > melody.size() - 1) {
+			cout << "Notes out of range." << endl; exit(1);
+		}
 
 		for (int i = 1; i < melody.size(); i++) {
 			melody[i-1].occupy = melody[i].tick - melody[i - 1].tick;
@@ -740,7 +753,7 @@ int main(int argc, char** argv) {
 
 		string f = Path2Name(midifile.getFilename());
 		fout << "#" << f << endl;
-		for (int i = 0; i < melody.size() && i < notes; i++) {
+		for (int i = 0; i < notes; i++) {
 			int j = 0;
 			for (; j < i; j++) {
 				if (melody[i].equals(&melody[j])) {
