@@ -702,6 +702,7 @@ int main(int argc, char** argv) {
 			_itoa_s(i, c, 10);
 			RecursiveDirectory(StringToWString(des + "\\f" + c));
 
+			int fcc = 0;
 			int m = float(100 - i) / 100.0*float(notes);
 			if (m > 0) {
 				for (int idx = 0; idx + m <= notes; idx++) {
@@ -713,9 +714,31 @@ int main(int argc, char** argv) {
 						mutateMelody(mutation, k, s.u, s.l, s.intervals);
 					}
 					char fc[8];
-					_itoa_s(idx, fc, 10);
+					_itoa_s(fcc, fc, 10);
 
 					melody2Img(mutation, notes, tpq, s.u, s.l, des + "\\f" + c + "\\" + f + fc + ".bmp");
+					fcc++;
+				}
+			}
+
+			int n = float(i) / 100.0*float(notes);
+			if (n > 0) {
+				for (int idx = 0; idx + n <= notes; idx++) {
+					mutation.clear();
+					for (int j = 0; j < notes; j++) {
+						mutation.push_back(melody[j]);
+					}
+					for (int k = 0; k < idx; k++) {
+						mutateMelody(mutation, k, s.u, s.l, s.intervals);
+					}
+					for (int k = idx + n; k < notes; k++) {
+						mutateMelody(mutation, k, s.u, s.l, s.intervals);
+					}
+					char fc[8];
+					_itoa_s(fcc, fc, 10);
+
+					melody2Img(mutation, notes, tpq, s.u, s.l, des + "\\f" + c + "\\" + f + fc + ".bmp");
+					fcc++;
 				}
 			}
 		}
